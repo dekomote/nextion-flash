@@ -11,3 +11,4 @@ edition = "2021"
 clap = { version = "4.4.4", features = ["derive"] }
 serial2 = "0.2.2"
 log = { version = "0.4", features = ["std"] }
+env_logger = "0.10"

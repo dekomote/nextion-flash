@@ -1,7 +1,7 @@
-
 use std::rc::Rc;
-
 use clap::Parser;
+
+mod logging;
 
 const COMMAND_START: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
 const COMMAND_STOP: [u8; 3] = [0xff, 0xff, 0xff];
@@ -36,13 +36,14 @@ struct Args {
 
 
 fn main() {
-
     let args = Args::parse();
+
+    logging::init_logger();
 
     let port = match serial2::SerialPort::open(args.serial_port, args.baud_rate) {
         Ok(port) => port,
         Err(err) => {
-            log::error!("Error opening serial port {}", err);
+            println!("Error opening serial port {}", err);
             return;
         }
     };
