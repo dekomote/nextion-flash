@@ -4,7 +4,6 @@ use serial2::SerialPort;
 
 mod logging;
 
-const COMMAND_START: [u8; 4] = [0x00, 0xff, 0xff, 0xff];
 const COMMAND_STOP: [u8; 3] = [0xff, 0xff, 0xff];
 const COMMAND_CONNECT: [u8; 14] = [0x00, 0xff, 0xff, 0xff, 0x63, 0x6f, 0x6e, 0x6e, 0x65, 0x63, 0x74, 0xff, 0xff, 0xff];
 
@@ -16,6 +15,7 @@ pub struct Connection<'a>{
 }
 
 impl<'a> Connection<'a> {
+
     pub fn try_bauds(device: & 'a str) ->  Result<Connection, Error> {
         let mut baud_rates = Vec::from(serial2::COMMON_BAUD_RATES);
         baud_rates.sort_unstable_by(|a, b| b.partial_cmp(a).unwrap());
@@ -39,6 +39,7 @@ impl<'a> Connection<'a> {
         }
         Err(Error::new(std::io::ErrorKind::NotConnected, "Error trying bauds."))
     }
+
     pub fn new(device: & 'a str, baud_rate: u32) ->  Result<Connection, Error> {
         Connection::connect(device, baud_rate)
     }
@@ -111,13 +112,14 @@ struct Args {
     file_path: String,
 
     /// Initial baud rate.
-    /// Faster baud rates will be tried if the setting is set.
-    #[arg(short, long, default_value_t = 115200)]
-    baud_rate: u32,
+    /// Optional, all baud rates will be tried if ommited.
+    #[arg(short, long)]
+    baud_rate: Option<u32>,
 
-    /// Do not try faster baud negotiations.
-    #[arg(short, long, default_value_t = false)]
-    skip_faster_baud_trial: bool,
+    /// File transfer baud rate.
+    #[arg(short, long, default_value_t=115200)]
+    download_baud_rate: u32,
+
 }
 
 
@@ -126,7 +128,13 @@ fn main() {
 
     logging::init_logger();
 
-    let connection = Connection::try_bauds(&args.serial_port).unwrap();
-    let connection = Connection::try_bauds(&args.serial_port).unwrap();
+    let connection = match args.baud_rate {
+        Some(b) => {
+            Connection::new(&args.serial_port, b)
+        },
+        None => {
+            Connection::try_bauds(&args.serial_port)
+        }
+    };
     
 }
