@@ -1,4 +1,4 @@
-use std::{rc::Rc, time::Duration, io::{Error, Read}, thread, cell::RefCell, borrow::BorrowMut};
+use std::{rc::Rc, time::Duration, io::{Error, Read}, thread, cell::RefCell, borrow::BorrowMut, path::PathBuf, fs::File};
 use clap::Parser;
 use serial2::SerialPort;
 
@@ -57,6 +57,26 @@ impl<'a> Connection<'a> {
             };
         }
     }
+
+    pub fn upload_file(&self, file_path: &String, baud_rate: u32) -> Result<(), Error>{
+        unsafe {
+            Connection::purge_read(&mut *self.port.as_ref().as_ptr());
+        }
+        let port = &mut self.port.borrow();
+
+        let file = File::open(file_path).unwrap();
+        let file_size = file.metadata().unwrap().len();
+
+
+        let command = format!("whmi-wri {file_size},{baud_rate},0");
+
+        port.write(b"").unwrap_or(0);
+        port.write(command.as_bytes()).unwrap_or(0);
+        port.write(&COMMAND_STOP).unwrap_or(0);
+        port.flush().unwrap();
+
+        Ok(())
+    }
     
     fn connect(device: & 'a str, baud_rate: u32) -> Result<Connection, Error> {
         let mut port = match serial2::SerialPort::open(device, baud_rate) {
@@ -71,7 +91,7 @@ impl<'a> Connection<'a> {
         match port.write_all(&COMMAND_CONNECT) {
             Ok(_) => {
                 let buf: &mut [u8; 5] = &mut [0; 5];
-                
+
                 port.set_read_timeout(Connection::get_connect_timeout(baud_rate)).unwrap();
                 port.read_exact(buf).and_then(|()| {
                     if buf == b"comok" {
@@ -104,11 +124,11 @@ struct Args {
     /// On Windows, use something like "COM1".
     /// For COM ports above COM9, you need to use the win32 device namespace,
     /// for example "\\.\COM10" (or "\\\\.\\COM10" with string escaping).
-    #[arg(default_value_t = String::from("/dev/ttyUSB1"))]
+    #[arg(default_value_t = String::from("/dev/ttyUSB0"))]
     serial_port: String,
 
     /// Path to the file to be flashed
-    #[arg(default_value_t = String::from("1.txt"))]
+    #[arg(default_value_t = String::from("/home/dejan/1.txt"))]
     file_path: String,
 
     /// Initial baud rate.
@@ -130,11 +150,13 @@ fn main() {
 
     let connection = match args.baud_rate {
         Some(b) => {
-            Connection::new(&args.serial_port, b)
+            Connection::new(&args.serial_port, b).unwrap()
         },
         None => {
-            Connection::try_bauds(&args.serial_port)
+            Connection::try_bauds(&args.serial_port).unwrap()
         }
     };
+
+    connection.upload_file(&args.file_path, args.download_baud_rate).unwrap();
     
 }
