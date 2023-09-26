@@ -2,6 +2,9 @@ name: Rust
 
 on: [push]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -9,6 +12,8 @@ jobs:
     defaults:
       run:
         working-directory: ./nextion_flash
+      permissions:
+          contents: write
 
     steps:
       - name: Checkout
