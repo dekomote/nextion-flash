@@ -6,6 +6,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: ./nextion_flash
+
+
     steps:
       - name: Checkout
         uses: actions/checkout@v1
@@ -18,7 +23,6 @@ jobs:
           override: true
 
       - name: Build
-        working-directory: "./nextion_flash/"
         run: cargo build --all --release && strip target/release/nextion_flash && mv target/release/nextion_flash target/release/nextion_flash_amd64
 
       - name: Release
@@ -45,7 +49,6 @@ jobs:
           override: true
 
       - name: Build
-        working-directory: "./nextion_flash/"
         run: cargo build --all --release
 
       - name: Release
@@ -72,7 +75,6 @@ jobs:
           override: true
 
       - name: Build for mac
-        working-directory: "./nextion_flash/"
         run: cargo build --all --release && strip nextion_flash/target/release/nextion_flash && mv nextion_flash/target/release/nextion_flash nextion_flash/target/release/nextion_flash_darwin
 
       - name: Release
