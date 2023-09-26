@@ -10,7 +10,6 @@ jobs:
       run:
         working-directory: ./nextion_flash
 
-
     steps:
       - name: Checkout
         uses: actions/checkout@v1
@@ -37,6 +36,10 @@ jobs:
   build-win:
     runs-on: windows-latest
 
+    defaults:
+      run:
+        working-directory: ./nextion_flash
+
     steps:
       - name: Checkout
         uses: actions/checkout@v1
@@ -62,6 +65,10 @@ jobs:
   build-mac:
     runs-on: macos-latest
 
+    defaults:
+      run:
+        working-directory: ./nextion_flash
+
     steps:
       - name: Checkout
         uses: actions/checkout@v1
@@ -75,7 +82,7 @@ jobs:
           override: true
 
       - name: Build for mac
-        run: cargo build --all --release && strip nextion_flash/target/release/nextion_flash && mv nextion_flash/target/release/nextion_flash nextion_flash/target/release/nextion_flash_darwin
+        run: cargo build --all --release && strip target/release/nextion_flash && mv target/release/nextion_flash target/release/nextion_flash_darwin
 
       - name: Release
         uses: softprops/action-gh-release@v1
