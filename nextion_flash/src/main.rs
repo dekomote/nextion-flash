@@ -2,14 +2,14 @@ use clap::Parser;
 
 mod args;
 use args::Args;
-use nextion_flash::Connection;
+use nextion_flash::NextionConnection;
 
 fn main() {
     let args = Args::parse();
 
     let connection = match args.baud_rate {
-        Some(b) => Connection::new(&args.serial_port, b).unwrap(),
-        None => Connection::try_bauds(&args.serial_port).unwrap(),
+        Some(b) => NextionConnection::new(&args.serial_port, b).unwrap(),
+        None => NextionConnection::try_bauds(&args.serial_port).unwrap(),
     };
 
     connection

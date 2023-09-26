@@ -1,4 +1,4 @@
-use serial2::SerialPort;
+use serial2::{SerialPort, COMMON_BAUD_RATES};
 use std::io::ErrorKind;
 use std::time::Instant;
 use std::{
@@ -10,25 +10,28 @@ use std::{
     time::Duration,
 };
 
+const ACK: u8 = 0x05;
+const COM_OK: &[u8; 5] = b"comok";
+const CHUNK_SIZE: usize = 4096;
 const COMMAND_STOP: [u8; 3] = [0xff, 0xff, 0xff];
 const COMMAND_CONNECT: [u8; 14] = [
     0x00, 0xff, 0xff, 0xff, 0x63, 0x6f, 0x6e, 0x6e, 0x65, 0x63, 0x74, 0xff, 0xff, 0xff,
 ];
 
-pub struct Connection<'a> {
+pub struct NextionConnection<'a> {
     pub port: Rc<RefCell<SerialPort>>,
     pub baud_rate: u32,
     pub device: &'a str,
 }
 
-impl<'a> Connection<'a> {
-    pub fn try_bauds(device: &'a str) -> Result<Connection, Error> {
-        let mut baud_rates = Vec::from(serial2::COMMON_BAUD_RATES);
+impl<'a> NextionConnection<'a> {
+    pub fn try_bauds(device: &'a str) -> Result<NextionConnection, Error> {
+        let mut baud_rates = Vec::from(COMMON_BAUD_RATES);
         baud_rates.sort_unstable_by(|a, b| b.partial_cmp(a).unwrap());
 
         for (pos, baud_rate) in baud_rates.iter().enumerate() {
             log::info!("Trying baud {baud_rate}");
-            match Connection::connect(device, *baud_rate) {
+            match NextionConnection::connect(device, *baud_rate) {
                 Ok(conn) => {
                     log::info!("Connected at baud {baud_rate}");
                     return Ok(conn);
@@ -48,12 +51,16 @@ impl<'a> Connection<'a> {
         ))
     }
 
-    pub fn new(device: &'a str, baud_rate: u32) -> Result<Connection, Error> {
-        Connection::connect(device, baud_rate)
+    pub fn new(device: &'a str, baud_rate: u32) -> Result<NextionConnection, Error> {
+        NextionConnection::connect(device, baud_rate)
     }
 
     fn get_connect_timeout(baud_rate: u32) -> Duration {
         Duration::from_millis((30 + 11000000 / baud_rate).into())
+    }
+
+    fn get_upload_timeout(baud_rate: u32) -> Duration {
+        Duration::from_millis((CHUNK_SIZE * 1000 / baud_rate as usize + 10) as u64)
     }
 
     fn purge_read(port: &mut SerialPort) {
@@ -83,7 +90,7 @@ impl<'a> Connection<'a> {
                     let read_value = buf[0];
                     if read_value != 0 {
                         bytes_read.push(read_value);
-                        if read_value == 0x05 {
+                        if read_value == ACK {
                             break;
                         }
                     }
@@ -101,7 +108,7 @@ impl<'a> Connection<'a> {
         let port = &mut self.port.borrow();
 
         unsafe {
-            Connection::purge_read(&mut *self.port.as_ref().as_ptr());
+            NextionConnection::purge_read(&mut *self.port.as_ref().as_ptr());
         }
 
         let file = File::open(file_path).unwrap();
@@ -109,19 +116,19 @@ impl<'a> Connection<'a> {
 
         let command = format!("whmi-wri {file_size},{baud_rate},0");
 
-        Connection::send_command(port, b"").unwrap_or(0);
-        Connection::send_command(port, command.as_bytes()).unwrap_or(0);
+        NextionConnection::send_command(port, b"").unwrap_or(0);
+        NextionConnection::send_command(port, command.as_bytes()).unwrap_or(0);
         thread::sleep(Duration::from_millis(50));
-        let mut port = match serial2::SerialPort::open(self.device, baud_rate) {
+        let mut port = match SerialPort::open(self.device, baud_rate) {
             Ok(port) => port,
             Err(err) => {
                 return Err(err);
             }
         };
 
-        match Connection::read_to_vec(&mut port, Duration::from_millis(500)) {
+        match NextionConnection::read_to_vec(&mut port, Duration::from_millis(500)) {
             Ok(v) => {
-                if !v.contains(&0x05) {
+                if !v.contains(&ACK) {
                     return Err(Error::new(
                         ErrorKind::InvalidData,
                         "Didn't receive the right response",
@@ -129,9 +136,7 @@ impl<'a> Connection<'a> {
                 };
                 Ok(port)
             }
-            Err(err) => {
-                Err(err)
-            }
+            Err(err) => Err(err),
         }
     }
 
@@ -142,40 +147,39 @@ impl<'a> Connection<'a> {
                 return Err(err);
             }
         };
+
         let mut file = match File::open(file_path) {
             Ok(f) => f,
             Err(err) => return Err(err),
         };
+        let file_size = file.metadata().unwrap().len() as usize;
 
-        let file_size = file.metadata().unwrap().len();
-        let mut chunk_counter = file_size / 4096 + 1;
-        let last_chunk = file_size % 4096;
+        let mut chunk_counter = file_size / CHUNK_SIZE + 1;
+        let last_chunk = file_size % CHUNK_SIZE;
 
         let buf: &mut [u8; 1] = &mut [0; 1];
-        let mut large_buf: Vec<u8> = vec![0; 4096];
+        let large_buf: &mut [u8; CHUNK_SIZE] = &mut [0; CHUNK_SIZE];
 
         while chunk_counter > 0 {
             if chunk_counter == 1 {
                 for _ in 0..last_chunk {
                     match file.read_exact(buf) {
-                        Ok(()) => {
-                            port.write(buf).unwrap();
-                        }
+                        Ok(()) => port.write(buf).unwrap(),
                         Err(e) => return Err(e),
-                    }
+                    };
                 }
             } else {
-                match file.read_exact(&mut large_buf) {
-                    Ok(_) => port.write(&large_buf).unwrap(),
+                match file.read_exact(large_buf) {
+                    Ok(_) => port.write(large_buf).unwrap(),
                     Err(e) => return Err(e),
                 };
             }
 
-            thread::sleep(Duration::from_millis(4096000 / baud_rate as u64 + 10));
+            thread::sleep(NextionConnection::get_upload_timeout(baud_rate));
 
-            match Connection::read_to_vec(&mut port, Duration::from_millis(500)) {
+            match NextionConnection::read_to_vec(&mut port, Duration::from_millis(500)) {
                 Ok(v) => {
-                    if !v.contains(&0x05) {
+                    if !v.contains(&ACK) {
                         return Err(Error::new(
                             ErrorKind::InvalidData,
                             "Didn't receive the right response",
@@ -184,32 +188,29 @@ impl<'a> Connection<'a> {
                 }
                 Err(e) => return Err(e),
             };
-
             chunk_counter -= 1;
         }
 
         Ok(())
     }
 
-    fn connect(device: &'a str, baud_rate: u32) -> Result<Connection, Error> {
-        let mut port = match serial2::SerialPort::open(device, baud_rate) {
+    fn connect(device: &'a str, baud_rate: u32) -> Result<NextionConnection, Error> {
+        let mut port = match SerialPort::open(device, baud_rate) {
             Ok(port) => port,
-            Err(err) => {
-                return Err(err);
-            }
+            Err(err) => return Err(err),
         };
 
-        Connection::purge_read(&mut port);
+        NextionConnection::purge_read(&mut port);
 
         match port.write_all(&COMMAND_CONNECT) {
             Ok(_) => {
                 let buf: &mut [u8; 5] = &mut [0; 5];
 
-                port.set_read_timeout(Connection::get_connect_timeout(baud_rate))
+                port.set_read_timeout(NextionConnection::get_connect_timeout(baud_rate))
                     .unwrap();
                 port.read_exact(buf).and_then(|()| {
-                    if buf == b"comok" {
-                        Ok(Connection {
+                    if buf == COM_OK {
+                        Ok(NextionConnection {
                             port: Rc::new(RefCell::new(port)),
                             baud_rate,
                             device,
