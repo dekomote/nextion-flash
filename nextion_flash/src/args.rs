@@ -8,11 +8,11 @@ pub struct Args {
     /// On Windows, use something like "COM1".
     /// For COM ports above COM9, you need to use the win32 device namespace,
     /// for example "\\.\COM10" (or "\\\\.\\COM10" with string escaping).
-    #[arg(default_value_t = String::from("/dev/ttyUSB0"))]
+    #[arg()]
     pub serial_port: String,
 
     /// Path to the file to be flashed
-    #[arg(default_value_t = String::from("/home/dejan/1.tft"))]
+    #[arg()]
     pub file_path: String,
 
     /// Initial baud rate.

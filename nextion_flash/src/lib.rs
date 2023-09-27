@@ -1,3 +1,4 @@
+use indicatif::ProgressBar;
 use serial2::{SerialPort, COMMON_BAUD_RATES};
 use std::io::ErrorKind;
 use std::time::Instant;
@@ -25,15 +26,69 @@ pub struct NextionConnection<'a> {
 }
 
 impl<'a> NextionConnection<'a> {
+    fn purge_read(port: &mut SerialPort) {
+        loop {
+            let b: &mut [u8; 1] = &mut [0];
+            match port.read_exact(b) {
+                Ok(_) => {}
+                Err(_) => break,
+            };
+        }
+    }
+
+    fn connect(device: &'a str, baud_rate: u32) -> Result<NextionConnection, Error> {
+        let mut port = match SerialPort::open(device, baud_rate) {
+            Ok(port) => port,
+            Err(err) => return Err(err),
+        };
+
+        NextionConnection::purge_read(&mut port);
+
+        match port.write_all(&COMMAND_CONNECT) {
+            Ok(_) => {
+                let buf: &mut [u8; 5] = &mut [0; 5];
+
+                port.set_read_timeout(NextionConnection::get_connect_timeout(baud_rate))
+                    .unwrap();
+                port.read_exact(buf).and_then(|()| {
+                    if buf == COM_OK {
+                        Ok(NextionConnection {
+                            port: Rc::new(RefCell::new(port)),
+                            baud_rate,
+                            device,
+                        })
+                    } else {
+                        Err(Error::new(
+                            std::io::ErrorKind::NotConnected,
+                            "Connection not established. Try and restart the device",
+                        ))
+                    }
+                })
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    pub fn new(device: &'a str, baud_rate: u32) -> Result<NextionConnection, Error> {
+        NextionConnection::connect(device, baud_rate)
+    }
+
     pub fn try_bauds(device: &'a str) -> Result<NextionConnection, Error> {
         let mut baud_rates = Vec::from(COMMON_BAUD_RATES);
         baud_rates.sort_unstable_by(|a, b| b.partial_cmp(a).unwrap());
 
+        let bar = ProgressBar::new_spinner();
+
         for (pos, baud_rate) in baud_rates.iter().enumerate() {
-            log::info!("Trying baud {baud_rate}");
+            bar.tick();
+            bar.set_message(format!(
+                "{}Trying baud {}{}{baud_rate}",
+                termion::color::Fg(termion::color::LightYellow),
+                termion::color::Fg(termion::color::Green),
+                termion::style::Bold
+            ));
             match NextionConnection::connect(device, *baud_rate) {
                 Ok(conn) => {
-                    log::info!("Connected at baud {baud_rate}");
                     return Ok(conn);
                 }
                 Err(err) => {
@@ -47,12 +102,8 @@ impl<'a> NextionConnection<'a> {
         }
         Err(Error::new(
             std::io::ErrorKind::NotConnected,
-            "Error trying bauds.",
+            "No suitable baud rate found. Try and reset the display.",
         ))
-    }
-
-    pub fn new(device: &'a str, baud_rate: u32) -> Result<NextionConnection, Error> {
-        NextionConnection::connect(device, baud_rate)
     }
 
     fn get_connect_timeout(baud_rate: u32) -> Duration {
@@ -61,16 +112,6 @@ impl<'a> NextionConnection<'a> {
 
     fn get_upload_timeout(baud_rate: u32) -> Duration {
         Duration::from_millis((CHUNK_SIZE * 1000 / baud_rate as usize + 10) as u64)
-    }
-
-    fn purge_read(port: &mut SerialPort) {
-        loop {
-            let b: &mut [u8; 1] = &mut [0];
-            match port.read_exact(b) {
-                Ok(_) => {}
-                Err(_) => break,
-            };
-        }
     }
 
     fn send_command(port: &SerialPort, command: &[u8]) -> Result<usize, Error> {
@@ -111,6 +152,13 @@ impl<'a> NextionConnection<'a> {
             NextionConnection::purge_read(&mut *self.port.as_ref().as_ptr());
         }
 
+        println!(
+            "{}Started negotiating upload baud rate of {}{}{baud_rate}",
+            termion::color::Fg(termion::color::LightYellow),
+            termion::color::Fg(termion::color::Green),
+            termion::style::Bold
+        );
+
         let file = File::open(file_path).unwrap();
         let file_size = file.metadata().unwrap().len();
 
@@ -131,7 +179,7 @@ impl<'a> NextionConnection<'a> {
                 if !v.contains(&ACK) {
                     return Err(Error::new(
                         ErrorKind::InvalidData,
-                        "Didn't receive the right response",
+                        "Didn't receive the right response.",
                     ));
                 };
                 Ok(port)
@@ -142,7 +190,19 @@ impl<'a> NextionConnection<'a> {
 
     pub fn upload_file(&self, file_path: &str, baud_rate: u32) -> Result<(), Error> {
         let mut port = match self.negotiate_upload_baud(file_path, baud_rate) {
-            Ok(port) => port,
+            Ok(port) => {
+                println!(
+                    "{}Successfully negotiated upload baud rate of {}{}{baud_rate}",
+                    termion::color::Fg(termion::color::LightYellow),
+                    termion::color::Fg(termion::color::Green),
+                    termion::style::Bold
+                );
+                println!(
+                    "{}Starting file upload",
+                    termion::color::Fg(termion::color::LightYellow)
+                );
+                port
+            }
             Err(err) => {
                 return Err(err);
             }
@@ -159,6 +219,15 @@ impl<'a> NextionConnection<'a> {
 
         let buf: &mut [u8; 1] = &mut [0; 1];
         let large_buf: &mut [u8; CHUNK_SIZE] = &mut [0; CHUNK_SIZE];
+
+        let bar = indicatif::ProgressBar::new(chunk_counter as u64);
+        bar.set_style(
+            indicatif::ProgressStyle::with_template(
+                "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
+            )
+            .unwrap()
+            .progress_chars("##-"),
+        );
 
         while chunk_counter > 0 {
             if chunk_counter == 1 {
@@ -188,42 +257,10 @@ impl<'a> NextionConnection<'a> {
                 }
                 Err(e) => return Err(e),
             };
+            bar.inc(1);
             chunk_counter -= 1;
         }
 
         Ok(())
-    }
-
-    fn connect(device: &'a str, baud_rate: u32) -> Result<NextionConnection, Error> {
-        let mut port = match SerialPort::open(device, baud_rate) {
-            Ok(port) => port,
-            Err(err) => return Err(err),
-        };
-
-        NextionConnection::purge_read(&mut port);
-
-        match port.write_all(&COMMAND_CONNECT) {
-            Ok(_) => {
-                let buf: &mut [u8; 5] = &mut [0; 5];
-
-                port.set_read_timeout(NextionConnection::get_connect_timeout(baud_rate))
-                    .unwrap();
-                port.read_exact(buf).and_then(|()| {
-                    if buf == COM_OK {
-                        Ok(NextionConnection {
-                            port: Rc::new(RefCell::new(port)),
-                            baud_rate,
-                            device,
-                        })
-                    } else {
-                        Err(Error::new(
-                            std::io::ErrorKind::NotConnected,
-                            "Connection not established. Try and restart the device",
-                        ))
-                    }
-                })
-            }
-            Err(err) => Err(err),
-        }
     }
 }
