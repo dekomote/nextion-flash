@@ -1,6 +1,6 @@
 [package]
 name = "nextion_flash"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Dejan Noveski <dr.mote@gmail.com>"]
 description = "Nextion Flash - Serial flasher for Nextion displays"
 edition = "2021"
@@ -12,5 +12,5 @@ clap = { version = "4.4.4", features = ["derive"] }
 serial2 = "0.2.2"
 log = { version = "0.4", features = ["std"] }
 env_logger = "0.10"
-termion = "2.0.1"
 indicatif = "0.17.7"
+crossterm = "0.27.0"

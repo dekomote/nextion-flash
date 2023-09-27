@@ -1,3 +1,4 @@
+use crossterm::style::Stylize;
 use indicatif::ProgressBar;
 use serial2::{SerialPort, COMMON_BAUD_RATES};
 use std::io::ErrorKind;
@@ -82,10 +83,9 @@ impl<'a> NextionConnection<'a> {
         for (pos, baud_rate) in baud_rates.iter().enumerate() {
             bar.tick();
             bar.set_message(format!(
-                "{}Trying baud {}{}{baud_rate}",
-                termion::color::Fg(termion::color::LightYellow),
-                termion::color::Fg(termion::color::Green),
-                termion::style::Bold
+                "{} {}",
+                "Trying baud".yellow(),
+                baud_rate.to_string().bold().green()
             ));
             match NextionConnection::connect(device, *baud_rate) {
                 Ok(conn) => {
@@ -153,10 +153,9 @@ impl<'a> NextionConnection<'a> {
         }
 
         println!(
-            "{}Started negotiating upload baud rate of {}{}{baud_rate}",
-            termion::color::Fg(termion::color::LightYellow),
-            termion::color::Fg(termion::color::Green),
-            termion::style::Bold
+            "{} {}",
+            "Started negotiating upload baud rate of".yellow(),
+            baud_rate.to_string().green().bold()
         );
 
         let file = File::open(file_path).unwrap();
@@ -192,15 +191,11 @@ impl<'a> NextionConnection<'a> {
         let mut port = match self.negotiate_upload_baud(file_path, baud_rate) {
             Ok(port) => {
                 println!(
-                    "{}Successfully negotiated upload baud rate of {}{}{baud_rate}",
-                    termion::color::Fg(termion::color::LightYellow),
-                    termion::color::Fg(termion::color::Green),
-                    termion::style::Bold
+                    "{} {}",
+                    "Successfully negotiated upload baud rate of".yellow(),
+                    baud_rate.to_string().green().bold()
                 );
-                println!(
-                    "{}Starting file upload",
-                    termion::color::Fg(termion::color::LightYellow)
-                );
+                println!("{}", "Starting file upload".yellow());
                 port
             }
             Err(err) => {

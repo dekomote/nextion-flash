@@ -1,5 +1,6 @@
 use clap::Parser;
-use termion::color;
+use crossterm::style::Stylize;
+use crossterm::style::{Color, SetForegroundColor};
 
 mod args;
 use args::Args;
@@ -12,32 +13,37 @@ fn main() {
         Some(baud_rate) => match NextionConnection::new(&args.serial_port, baud_rate) {
             Ok(conn) => {
                 println!(
-                    "{}Established connection on {}@{}",
-                    color::Fg(color::Green),
-                    args.serial_port,
-                    baud_rate,
+                    "{} {}@{}",
+                    "Established connection on".green(),
+                    args.serial_port.to_string().green().bold(),
+                    baud_rate.to_string().green().bold(),
                 );
                 conn
             }
             Err(e) => {
-                println!("{}Error connecting on {}@{}. Check connection to the display, or omit the baud rate to try other baud rates. ({e})", color::Fg(color::Red), args.serial_port, baud_rate);
+                println!("{} {}@{}. {}  ({e})",
+                    "Error connecting on".red(),
+                    args.serial_port.to_string().bold().red(),
+                    baud_rate.to_string().bold().red(),
+                    "Check connection to the display, or omit the baud rate to try other baud rates.".red()
+                );
                 return;
             }
         },
         None => match NextionConnection::try_bauds(&args.serial_port) {
             Ok(conn) => {
                 println!(
-                    "{}Established connection on {}@{}",
-                    color::Fg(color::Green),
-                    args.serial_port,
-                    conn.baud_rate,
+                    "{} {}@{}",
+                    "Established connection on".green(),
+                    args.serial_port.to_string().green().bold(),
+                    conn.baud_rate.to_string().green().bold(),
                 );
                 conn
             }
             Err(e) => {
                 println!(
                     "{}Error connecting to {}. Check connection to the display. ({e})",
-                    color::Fg(color::Red),
+                    SetForegroundColor(Color::Red),
                     args.serial_port
                 );
                 return;
@@ -47,10 +53,16 @@ fn main() {
 
     match connection.upload_file(&args.file_path, args.download_baud_rate) {
         Ok(()) => {
-            println!("{}Display flashed successfully!", color::Fg(color::Green));
+            println!(
+                "{}Display flashed successfully!",
+                SetForegroundColor(Color::Green)
+            );
         }
         Err(e) => {
-            println!("{}Error uploading file. ({e})", color::Fg(color::Red));
+            println!(
+                "{}Error uploading file. ({e})",
+                SetForegroundColor(Color::Red),
+            );
         }
     }
 }

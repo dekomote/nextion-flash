@@ -29,7 +29,6 @@ jobs:
 
       - name: Release
         uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             nextion_flash/target/release/nextion_flash_amd64
@@ -59,7 +58,6 @@ jobs:
 
       - name: Release
         uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: nextion_flash/target/release/nextion_flash.exe
         env:
@@ -89,7 +87,6 @@ jobs:
 
       - name: Release
         uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             nextion_flash/target/release/nextion_flash_darwin
