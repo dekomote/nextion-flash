@@ -146,11 +146,10 @@ impl<'a> NextionConnection<'a> {
     }
 
     fn negotiate_upload_baud(&self, file_path: &str, baud_rate: u32) -> Result<SerialPort, Error> {
-        let port = &mut self.port.borrow();
 
-        unsafe {
-            NextionConnection::purge_read(&mut *self.port.as_ref().as_ptr());
-        }
+        let port = &mut self.port.borrow_mut();
+
+        NextionConnection::purge_read(port);
 
         println!(
             "{} {}",
